@@ -1,6 +1,7 @@
 pub mod cuda;
 pub mod io;
 mod traits;
+pub mod vulkan;
 
 use libc::{c_char, c_int, c_uchar, c_void, size_t};
 pub use traits::{DoubleList, IntList, IntListOption};

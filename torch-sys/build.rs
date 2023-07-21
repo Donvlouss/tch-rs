@@ -217,7 +217,7 @@ fn make<P: AsRef<Path>>(libtorch: P, use_cuda: bool, use_hip: bool) {
     println!("cargo:rerun-if-changed=libtch/stb_image_resize.h");
     println!("cargo:rerun-if-changed=libtch/stb_image.h");
     match os.as_str() {
-        "linux" | "macos" => {
+        "linux" | "macos" | "android" => {
             let libtorch_cxx11_abi =
                 env_var_rerun("LIBTORCH_CXX11_ABI").unwrap_or_else(|_| "1".to_owned());
             cc::Build::new()
@@ -251,6 +251,17 @@ fn make<P: AsRef<Path>>(libtorch: P, use_cuda: bool, use_hip: bool) {
     };
 }
 
+fn env_var_target_specific(name: &str) -> Result<String, env::VarError> {
+    let target = env::var("TARGET").expect("Unable to get TARGET");
+
+    let name_with_target_hyphenated = name.to_owned() + "_" + &target;
+    let name_with_target_underscored = name.to_owned() + "_" + &target.replace("-", "_");
+
+    env_var_rerun(&name_with_target_hyphenated)
+        .or_else(|_| env_var_rerun(&name_with_target_underscored))
+        .or_else(|_| env_var_rerun(name))
+}
+
 fn main() {
     if !cfg!(feature = "doc-only") {
         let libtorch = prepare_libtorch_dir();
@@ -280,30 +291,71 @@ fn main() {
 
         make(&libtorch, use_cuda, use_hip);
 
-        println!("cargo:rustc-link-lib=static=tch");
-        if use_cuda {
-            println!("cargo:rustc-link-lib=torch_cuda");
-        }
-        if use_cuda_cu {
-            println!("cargo:rustc-link-lib=torch_cuda_cu");
-        }
-        if use_cuda_cpp {
-            println!("cargo:rustc-link-lib=torch_cuda_cpp");
-        }
-        if use_hip {
-            println!("cargo:rustc-link-lib=torch_hip");
-        }
-        println!("cargo:rustc-link-lib=torch_cpu");
-        println!("cargo:rustc-link-lib=torch");
-        println!("cargo:rustc-link-lib=c10");
-        if use_hip {
-            println!("cargo:rustc-link-lib=c10_hip");
-        }
+        let libtorch_lite: bool = env_var_target_specific("LIBTORCH_LITE")
+            .map(|s| s.parse().unwrap_or(true))
+            .unwrap_or(true);
+        let os = env::var("CARGO_CFG_TARGET_OS").expect("Unable to get TARGET_OS");
+
+        // println!("cargo:rustc-link-lib=static=tch");
+        // if use_cuda {
+        //     println!("cargo:rustc-link-lib=torch_cuda");
+        // }
+        // if use_cuda_cu {
+        //     println!("cargo:rustc-link-lib=torch_cuda_cu");
+        // }
+        // if use_cuda_cpp {
+        //     println!("cargo:rustc-link-lib=torch_cuda_cpp");
+        // }
+        // if use_hip {
+        //     println!("cargo:rustc-link-lib=torch_hip");
+        // }
+        // println!("cargo:rustc-link-lib=torch_cpu");
+        // println!("cargo:rustc-link-lib=torch");
+        // println!("cargo:rustc-link-lib=c10");
+        // if use_hip {
+        //     println!("cargo:rustc-link-lib=c10_hip");
+        // }
 
         let target = env::var("TARGET").unwrap();
 
-        if !target.contains("msvc") && !target.contains("apple") {
-            println!("cargo:rustc-link-lib=gomp");
+        // if !target.contains("msvc") && !target.contains("apple") {
+        //     println!("cargo:rustc-link-lib=gomp");
+        // }
+        match os.as_str() {
+            "windows" | "linux" | "macos" => {
+                if use_cuda {
+                    println!("cargo:rustc-link-lib=torch_cuda");
+                }
+                if use_cuda_cu {
+                    println!("cargo:rustc-link-lib=torch_cuda_cu");
+                }
+                if use_cuda_cpp {
+                    println!("cargo:rustc-link-lib=torch_cuda_cpp");
+                }
+                if use_hip {
+                    println!("cargo:rustc-link-lib=torch_hip");
+                }
+                println!("cargo:rustc-link-lib=torch_cpu");
+                println!("cargo:rustc-link-lib=torch");
+                println!("cargo:rustc-link-lib=c10");
+                if use_hip {
+                    println!("cargo:rustc-link-lib=c10_hip");
+                }
+
+                let target = env::var("TARGET").unwrap();
+
+                if !target.contains("msvc") && !target.contains("apple") {
+                    println!("cargo:rustc-link-lib=gomp");
+                }
+            }
+            "android" => {
+                if libtorch_lite {
+                    println!("cargo:rustc-link-lib=pytorch_jni_lite");
+                } else {
+                    println!("cargo:rustc-link-lib=pytorch_jni");
+                }
+            }
+            other => panic!("unsupported OS: {}", other),
         }
     }
 }
